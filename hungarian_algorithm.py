@@ -115,7 +115,8 @@ def get_strides(cost_matrix):
                 cond = True
 
     marked_rows = list(all_rows - set(unmarked_rows))
-    return assignment, marked_cols, marked_rows
+
+    return assignment, marked_rows, marked_cols
 
 
 def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
