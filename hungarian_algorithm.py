@@ -77,11 +77,12 @@ def search_optimum(cost_matrix):
 
 
 def get_strides(cost_matrix):
+
     assignment = search_optimum(copy.deepcopy(cost_matrix))
 
     all_rows = set(range(cost_matrix.shape[0]))
-    zero_rows = set(assignment[:, 1])
-    unmarked_rows = list(all_rows - zero_rows)
+    zero_rows = set(assignment[:,1])
+    unmarked_rows = list(all_rows - zero_rows) 
 
     marked_cols, cond = [], True
 
@@ -89,13 +90,14 @@ def get_strides(cost_matrix):
 
         cond = False
 
-        for row in unmarked_rows:
+        for row_num in unmarked_rows:
 
-            zero_col = np.where(row == 0)[0]
+            zero_col = np.where(cost_matrix[row_num] == 0)[0]
 
-            for col_num in range(len(zero_col)):
-
+            for col_num in zero_col:
+                
                 if col_num not in marked_cols:
+
                     marked_cols.append(col_num)
 
                     cond = True
@@ -105,12 +107,12 @@ def get_strides(cost_matrix):
             row_num, col_num = coord
 
             if row_num not in unmarked_rows and col_num in marked_cols:
+
                 unmarked_rows.append(row_num)
 
                 cond = True
 
     marked_rows = list(all_rows - set(unmarked_rows))
-
     return assignment, marked_cols, marked_rows
 
 
