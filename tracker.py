@@ -14,6 +14,7 @@ Object Attributes:
 - class : string
 - prob : float
 - last_frame_seen: int
+- active_track: bool
 '''
 
 '''
@@ -30,6 +31,7 @@ class Tracker:
         self.net = net
         self.object_track = []
         self.output_folder = output_folder
+        self.T_lost = 30
 
 
     def process_frame(self, frame):
@@ -44,22 +46,35 @@ class Tracker:
             # assign unique ids to every object
             for ids, obj in enumerate(objects):
                 center, height, width, cls_prob, prob = obj
-                self.object_track.append([ ids, center, height, width, cls_prob, prob, 0 ])
+                self.object_track.append([ ids, center, height, width, cls_prob, prob, 0, True ])
         else:
             # check previous frame for object assignment
             self.object_track = object_assign(objects, self.object_track, self.frame_count)
 
 
-        for id_val, center, height, width, class_name, prob, _ in self.object_track:
-            left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
-            right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
-            color = COLORS[VOC_CLASSES.index(class_name)]
-            cv2.rectangle(frame, left_up, right_bottom, color, 2)
-            label = str(id_val)
-            text_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-            p1 = (left_up[0], left_up[1] - text_size[1])
-            cv2.rectangle(frame, (p1[0] - 2 // 2, p1[1] - 2 - baseline), (p1[0] + text_size[0], p1[1] + text_size[1]), color, -1)
-            cv2.putText(frame, label, (p1[0], p1[1] + baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, 8)
+        # check out-of-commision
+        for obj_idx, obj in enumerate(self.object_track):
+
+            if self.frame_count - obj[6] > self.T_lost:
+
+                self.object_track[obj_idx][7] = False
+
+
+
+        # draw rectangles
+        for id_val, center, height, width, class_name, prob, last_seen, active_track in self.object_track:
+
+            if active_track:
+
+                left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
+                right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
+                color = COLORS[VOC_CLASSES.index(class_name)]
+                cv2.rectangle(frame, left_up, right_bottom, color, 2)
+                label = str(id_val)
+                text_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+                p1 = (left_up[0], left_up[1] - text_size[1])
+                cv2.rectangle(frame, (p1[0] - 2 // 2, p1[1] - 2 - baseline), (p1[0] + text_size[0], p1[1] + text_size[1]), color, -1)
+                cv2.putText(frame, label, (p1[0], p1[1] + baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, 8)
 
         cv2.imwrite(frame_filename, frame)
 

@@ -5,7 +5,7 @@ import torch
 from tracker import Tracker
 from src.resnet_yolo import resnet50
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 
 load_network_path = os.getcwd() + '/checkpoints/detector.pth'
 pretrained = True

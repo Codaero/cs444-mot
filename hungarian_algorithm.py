@@ -34,6 +34,7 @@ def filter_detections(assignment, row_amt, col_amt):
 
             if coord[1] in col_indexes:
                 new_assignment.append(coord)
+
     elif col_amt > row_amt: # unbalanced case 2
 
         row_indexes = set(range(row_amt))
@@ -42,6 +43,7 @@ def filter_detections(assignment, row_amt, col_amt):
 
             if coord[0] in row_indexes:
                 new_assignment.append(coord)
+                
     else:
         new_assignment = assignment
 
@@ -118,16 +120,20 @@ def get_strides(cost_matrix):
 
 def object_assign(curr_objs, prev_objs, frame_num):
     '''
-    curr_objs - [[center, height, width, cls, prob]]
-    prev_objs - [[ ids, center, height, width, cls, prob, last_frame_seen ], ...]
+    curr_objs - [[center, height, width, cls, prob, active_track]]
+    prev_objs - [[ ids, center, height, width, cls, prob, last_frame_seen, active_track ], ...]
     '''
 
     # STEP 1: CREATE COST MATRIX
-    cost_matrix = np.zeros((len(curr_objs), len(prev_objs)))
+
+    prev_exist_objs = [obj for obj in prev_objs if obj[7]]
+
+    cost_matrix = np.zeros((len(curr_objs), len(prev_exist_objs)))
 
     for i, c_obj in enumerate(curr_objs):
 
-        for j, p_obj in enumerate(prev_objs):
+        for j, p_obj in enumerate(prev_exist_objs):
+
             cost_matrix[i][j] = 1 - calculate_IOU(c_obj, p_obj)
 
     # STEP 2: PERFORM ASSIGNMENT
@@ -196,13 +202,13 @@ def object_assign(curr_objs, prev_objs, frame_num):
     row_idx, col_idx = assignment[:, 0], assignment[:, 1]
 
     # STEP 3: PARSE ASSIGNMENT
-    if len(curr_objs) > len(prev_objs):
+    if len(curr_objs) > len(prev_exist_objs):
 
-        new_objs = copy.deepcopy(prev_objs)
+        new_objs = copy.deepcopy(prev_exist_objs)
 
         for row, col in zip(row_idx, col_idx):
             new_objs[col] = [new_objs[col][0], curr_objs[row][0], curr_objs[row][1], curr_objs[row][2],
-                             curr_objs[row][3], curr_objs[row][4], frame_num]
+                             curr_objs[row][3], curr_objs[row][4], frame_num, True]
 
         next_new_id, curr_ids = new_objs[-1][0] + 1, len(curr_objs)
 
@@ -211,17 +217,32 @@ def object_assign(curr_objs, prev_objs, frame_num):
         for id_val in unidentified_ids:
             obj = curr_objs[id_val]
 
-            new_objs.append([next_new_id, obj[0], obj[1], obj[2], obj[3], obj[4], frame_num])
+            new_objs.append([next_new_id, obj[0], obj[1], obj[2], obj[3], obj[4], frame_num, True])
 
             next_new_id += 1
 
-        return new_objs
-
     else:
-        new_objs = copy.deepcopy(prev_objs)
+        new_objs = copy.deepcopy(prev_exist_objs)
 
         for row, col in zip(row_idx, col_idx):
             new_objs[col] = [new_objs[col][0], curr_objs[row][0], curr_objs[row][1], curr_objs[row][2],
-                             curr_objs[row][3], curr_objs[row][4], frame_num]
+                             curr_objs[row][3], curr_objs[row][4], frame_num, True]
 
-        return new_objs
+
+    final_objs, new_objs_cnt = [], 0
+    
+    for obj in prev_objs: 
+
+        if obj[7]:
+            final_objs.append(new_objs[new_objs_cnt])
+            new_objs_cnt += 1
+
+        else:
+            final_objs.append(obj)
+
+
+    while new_objs_cnt < len(new_objs):
+        final_objs.append(new_objs[new_objs_cnt])
+        new_objs_cnt += 1
+
+    return final_objs
