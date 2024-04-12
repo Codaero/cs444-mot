@@ -5,9 +5,9 @@ import torch
 from tracker import Tracker
 from src.resnet_yolo import resnet50
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
-load_network_path = './checkpoints/best_detector.pth' 
+load_network_path = os.getcwd() + '/checkpoints/detector.pth'
 pretrained = True
 
 # use to load a previously trained network
@@ -34,7 +34,7 @@ filename = "output.mp4"
 def test():
     cap = cv2.VideoCapture(file_path)
     os.makedirs(output_folder, exist_ok=True)
-    
+
     # Instantiate Tracker
     tracker = Tracker(net, output_folder)
 
@@ -46,13 +46,12 @@ def test():
 
         upd_frame = tracker.process_frame(frame)
 
-        cv2.imshow("Frame", upd_frame)
+        # cv2.imshow("Frame", upd_frame)
 
-        if cv2.waitKey(25) & 0xFF == ord('q'):
-            break
+        # if cv2.waitKey(25) & 0xFF == ord('q'):
+            # break
 
-        
-    frames = tracker.get_frames()    
+    frames = tracker.get_frames()
     # Define parameters
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -75,5 +74,3 @@ def test():
 
 if __name__ == '__main__':
     test()
-
-

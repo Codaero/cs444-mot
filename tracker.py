@@ -31,10 +31,10 @@ class Tracker:
         self.object_track = []
         self.output_folder = output_folder
 
+
     def process_frame(self, frame):
-
         frame_filename = os.path.join(self.output_folder, f"frame_{self.frame_count:04d}.jpg")
-
+        cv2.imwrite(frame_filename, frame)
 
         # result - [[(x1, y1) <top left>, (x2, y2) <bottom right>, VOC_CLASSES[cls_index] <class prob>, image_name <filename>, prob <confidence>], ... ]
         result = predict_image(self.net, frame_filename, root_img_directory="")
@@ -51,8 +51,8 @@ class Tracker:
 
 
         for id_val, center, height, width, class_name, prob, _ in self.object_track:
-            left_up = (center[0] - width / 2, center[1] - height / 2)
-            right_bottom = (center[0] + width / 2, center[1] + height / 2)
+            left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
+            right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
             color = COLORS[VOC_CLASSES.index(class_name)]
             cv2.rectangle(frame, left_up, right_bottom, color, 2)
             label = str(id_val)
@@ -76,7 +76,7 @@ class Tracker:
             
             tp_lt, btm_rt, cls_prob, filename, prob = obj
 
-            center = ((tp_lt[0] - btm_rt[0]) / 2, (tp_lt[1] - btm_rt[1]) / 2)
+            center = ((tp_lt[0] + btm_rt[0]) / 2, (tp_lt[1] + btm_rt[1]) / 2)
             height = abs(tp_lt[1] - btm_rt[1])
             width = abs(tp_lt[0] - btm_rt[0])
 
