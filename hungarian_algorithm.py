@@ -118,7 +118,7 @@ def get_strides(cost_matrix):
     return assignment, marked_cols, marked_rows
 
 
-def object_assign(curr_objs, prev_objs, frame_num):
+def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
     '''
     curr_objs - [[center, height, width, cls, prob, active_track]]
     prev_objs - [[ ids, center, height, width, cls, prob, last_frame_seen, active_track ], ...]
@@ -134,7 +134,13 @@ def object_assign(curr_objs, prev_objs, frame_num):
 
         for j, p_obj in enumerate(prev_exist_objs):
 
-            cost_matrix[i][j] = 1 - calculate_IOU(c_obj, p_obj)
+            iou = calculate_IOU(c_obj, p_obj)
+
+            if iou <= IOU_min:
+
+                iou = 0
+
+            cost_matrix[i][j] = 1 - iou
 
     # STEP 2: PERFORM ASSIGNMENT
     row_amt = cost_matrix.shape[0]

@@ -31,7 +31,8 @@ class Tracker:
         self.net = net
         self.object_track = []
         self.output_folder = output_folder
-        self.T_lost = 30
+        self.T_lost = 1 # The original paper stated if an object reappears, it will take a new identity
+        self.IOU_min = 0.1 # The paper states to reject any object assignments less than IOUmin
 
 
     def process_frame(self, frame):
@@ -49,7 +50,7 @@ class Tracker:
                 self.object_track.append([ ids, center, height, width, cls_prob, prob, 0, True ])
         else:
             # check previous frame for object assignment
-            self.object_track = object_assign(objects, self.object_track, self.frame_count)
+            self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
 
 
         # check out-of-commision
