@@ -41,13 +41,28 @@ class Tracker:
 
         # result - [[(x1, y1) <top left>, (x2, y2) <bottom right>, VOC_CLASSES[cls_index] <class prob>, image_name <filename>, prob <confidence>], ... ]
         result = predict_image(self.net, frame_filename, root_img_directory="")
+        rm_idx = []
 
-        objects = self.create_objects(result)
+        for obj_idx, obj in enumerate(result):
+
+            width = abs(obj[0][0] - obj[1][0])
+            height = abs(obj[0][1] - obj[1][1])
+
+            area = width * height
+
+            if area == 0:
+
+                rm_idx.append(obj_idx)
+
+        upd_result = [obj for idx, obj in enumerate(result) if idx not in rm_idx]
+                
+        objects = self.create_objects(upd_result)             
         if self.frame_count == 0:
             # assign unique ids to every object
             for ids, obj in enumerate(objects):
                 center, height, width, cls_prob, prob = obj
                 self.object_track.append([ ids, center, height, width, cls_prob, prob, 0, True ])
+
         else:
             # check previous frame for object assignment
             self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
