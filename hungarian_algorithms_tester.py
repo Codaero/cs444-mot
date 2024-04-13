@@ -45,9 +45,7 @@ from hungarian_algorithm import filter_detections
 #                         [0.6, 0.3, 0.4, 0.2],
 #                         [0.8, 0.1, 0.9, 0.6]])
 
-cost_matrix = np.array([[0.0,0.5022168444594054,0.5792354598816678],
-                        [0.0,0.0,0.0],
-                        [0.0,32.56478313633715,52.61411260714799]])
+cost_matrix = np.array([[0.0, 0.0], [0.0, 0.0]])
 
 # Add extra rows/columns
 row_amt = cost_matrix.shape[0]

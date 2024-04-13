@@ -4,9 +4,9 @@ from scipy.optimize import linear_sum_assignment
 
 
 def calculate_IOU(box_1, box_2):
-    c1, c2 = box_1[0], box_2[1]
-    h1, h2 = box_1[1], box_2[2]
-    w1, w2 = box_1[2], box_2[3]
+    c1, c2 = box_1['center'], box_2['center']
+    h1, h2 = box_1['height'], box_2['height']
+    w1, w2 = box_1['width'], box_2['width']
 
     tl_1 = (c1[0] - w1 / 2, c1[1] - h1 / 2)
     br_1 = (c1[0] + w1 / 2, c1[1] + h1 / 2)
@@ -121,15 +121,34 @@ def get_strides(cost_matrix):
 
 def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
     '''
-    curr_objs - [[center, height, width, cls, prob, active_track]]
+    curr_objs - [[center, height, width, cls, prob]]
     prev_objs - [[ ids, center, height, width, cls, prob, last_frame_seen, active_track ], ...]
     '''
 
+    if len(curr_objs) == 0:
+        return prev_objs
+
     # STEP 1: CREATE COST MATRIX
 
-    prev_exist_objs = [obj for obj in prev_objs if obj[7]]
+    prev_exist_objs = [obj for obj in prev_objs if obj['active_track']]
+
+    if len(prev_exist_objs) == 0:
+        hidden_return = copy.deepcopy(prev_objs)
+        last_id = prev_objs[-1]['id'] + 1
+
+        for obj in curr_objs:
+            new_obj = copy.deepcopy(obj)
+            new_obj['id'] = last_id
+            new_obj['last_frame_seen'] = frame_num
+            hidden_return.append(new_obj)
+            last_id += 1
+            return hidden_return
 
     cost_matrix = np.zeros((len(curr_objs), len(prev_exist_objs)))
+    # print("curr_objs: ", curr_objs)
+    # print("prev_objs: ", prev_objs)
+    # print("prev_objs_exists: ", prev_exist_objs)
+    # print("Cost Matrix: ", cost_matrix)
 
     for i, c_obj in enumerate(curr_objs):
 
@@ -205,48 +224,56 @@ def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
                     cost_matrix[row_num][col_num] += min_value
 
     assignment = filter_detections(assignment, row_amt, col_amt)
-
+    # print("assignment: ", assignment)
+    # print("frame_number: ", frame_num)
     row_idx, col_idx = assignment[:, 0], assignment[:, 1]
 
     # STEP 3: PARSE ASSIGNMENT
+
+    new_objs = copy.deepcopy(prev_exist_objs)
+    print(new_objs)
+    for row, col in zip(row_idx, col_idx):
+        new_objs[col]['center'] = curr_objs[row]['center']
+        new_objs[col]['height'] = curr_objs[row]['height']
+        new_objs[col]['width'] = curr_objs[row]['width']
+        new_objs[col]['class'] = curr_objs[row]['class']
+        new_objs[col]['prob'] = curr_objs[row]['prob']
+        new_objs[col]['last_frame_seen'] = frame_num
+        new_objs[col]['active_track'] = True
+
     if len(curr_objs) > len(prev_exist_objs):
 
-        new_objs = copy.deepcopy(prev_exist_objs)
-
-        for row, col in zip(row_idx, col_idx):
-            new_objs[col] = [new_objs[col][0], curr_objs[row][0], curr_objs[row][1], curr_objs[row][2],
-                             curr_objs[row][3], curr_objs[row][4], frame_num, True]
-
-        next_new_id, curr_ids = new_objs[-1][0] + 1, len(curr_objs)
+        next_new_id, curr_ids = new_objs[-1]['id'] + 1, len(curr_objs)
 
         unidentified_ids = [x for x in range(curr_ids) if x not in row_idx]
 
         for id_val in unidentified_ids:
             obj = curr_objs[id_val]
 
-            new_objs.append([next_new_id, obj[0], obj[1], obj[2], obj[3], obj[4], frame_num, True])
+            unidentified_object = dict()
+            unidentified_object['id'] = next_new_id
+            unidentified_object['center'] = obj['center']
+            unidentified_object['height'] = obj['height']
+            unidentified_object['width'] = obj['width']
+            unidentified_object['class'] = obj['class']
+            unidentified_object['prob'] = obj['prob']
+            unidentified_object['last_frame_seen'] = frame_num
+            unidentified_object['active_track'] = True
+
+            new_objs.append(unidentified_object)
 
             next_new_id += 1
-
-    else:
-        new_objs = copy.deepcopy(prev_exist_objs)
-
-        for row, col in zip(row_idx, col_idx):
-            new_objs[col] = [new_objs[col][0], curr_objs[row][0], curr_objs[row][1], curr_objs[row][2],
-                             curr_objs[row][3], curr_objs[row][4], frame_num, True]
-
 
     final_objs, new_objs_cnt = [], 0
     
     for obj in prev_objs: 
 
-        if obj[7]:
+        if obj['active_track']:
             final_objs.append(new_objs[new_objs_cnt])
             new_objs_cnt += 1
 
         else:
             final_objs.append(obj)
-
 
     while new_objs_cnt < len(new_objs):
         final_objs.append(new_objs[new_objs_cnt])
