@@ -1,13 +1,15 @@
 import os
 import cv2
 import torch
+import numpy as np
 
 from tracker import Tracker
 from src.resnet_yolo import resnet50
 
 device = torch.device("cuda")
 
-load_network_path = os.getcwd() + '/checkpoints/detector.pth'
+load_network_path = None
+# load_network_path = os.getcwd() + '/checkpoints/detector2.pth'
 pretrained = True
 
 # use to load a previously trained network
@@ -17,7 +19,7 @@ if load_network_path is not None:
     net.load_state_dict(torch.load(load_network_path))
 else:
     print('Load pre-trained model')
-    net = resnet50(pretrained=pretrained).to(device)
+    net = torch.hub.load('ultralytics/yolov5', 'yolov5s')
 
 '''
 @params: 
@@ -62,6 +64,7 @@ def test():
 
     # Iterate over the list of frames and write each frame to video
     for frame in frames:
+
         out.write(frame)
 
     # Release VideoWriter object
