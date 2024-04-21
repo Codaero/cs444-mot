@@ -1,148 +1,307 @@
-import os
-import cv2
-from src.predict import predict_image
-from src.config import VOC_CLASSES, COLORS
+import copy
+import numpy as np
+from scipy.optimize import linear_sum_assignment
 
-from hungarian_algorithm import object_assign
 
-'''
-Object Attributes:
-- id : int
-- center : tuple(float, float)
-- height : float
-- width : float
-- velocity: tuple(float, float)
-- class : string
-- prob : float
-- last_frame_seen: int
-- active_track: bool
-'''
+def calculate_IOU(box_1, box_2):
+    c1, c2 = box_1['center'], box_2['center']
+    h1, h2 = box_1['height'], box_2['height']
+    w1, w2 = box_1['width'], box_2['width']
 
-'''
-Frames List Attribute:
-- Frame Number
-- Object List
+    w_i = min(c1[0] + w1, c2[0] + w2) - max(c1[0], c2[0])
+    h_i = min(c1[1] + h1, c2[1] + h2) - max(c1[1], c2[1])
+    if w_i <= 0 or h_i <= 0:  # No overlap
+        return 0
+    area_1 = w1 * h1
+    area_2 = w2 * h2
+    I = w_i * h_i
+    U = area_1 + area_2 - I  # Union = Total Area - I
+    return I / U
 
-result - [[(x1, y1) <top left>, (x2, y2) <bottom right>, VOC_CLASSES[cls_index] <class prob>, image_name <filename>, prob <confidence>], ... ]
-'''
 
-class Tracker:
-    def __init__(self, net, output_folder, frame_dim):
-        self.frame_dim = frame_dim
-        self.frame_count = 0
-        self.frame_list = []
-        self.net = net
-        self.object_track = []
-        self.output_folder = output_folder
-        self.T_lost = 1  # The original paper stated if an object reappears, it will take a new identity
-        self.IOU_min = 0.1  # The paper states to reject any object assignments less than IOUmin
-        self.start_assign = False
+def filter_detections(assignment, row_amt, col_amt):
+    new_assignment = []
 
-    def process_frame(self, frame):
-        frame_filename = os.path.join(self.output_folder, f"frame_{self.frame_count:04d}.jpg")
-        cv2.imwrite(frame_filename, frame)
+    if row_amt > col_amt:  # unbalanced case 1
 
-        # TASK: GENERATE RESULTS FROM YOLO MODEL
-        result = self.net(frame)
-        result = result.xyxy[0]
+        col_indexes = set(range(col_amt))
 
-        # TASK: REMOVE BOUNDING BOXES RESULTING FROM ZERO AREA
-        rm_idx = []
-        for obj_idx, obj in enumerate(result):
-            width = abs(obj[0] - obj[2])
-            height = abs(obj[1] - obj[3])
-            area = width * height
-            if area == 0 or self.net.names[int(obj[5])] != 'person':
-                rm_idx.append(obj_idx)
+        for coord in assignment:
 
-        # TASK: TRANSFORM OBJECT DATA WITH CENTER COORDINATE
-        upd_result = [obj for idx, obj in enumerate(result) if idx not in rm_idx]
-        objects = self.create_objects(upd_result)
+            if coord[1] in col_indexes:
+                new_assignment.append(coord)
 
-        # TASK: GET THE SET OF OBJECT TRACKS WE WANT TO DISPLAY VIA HUNGARIAN ALGORITHM
-        if not self.start_assign:
-            # assign unique ids to every object
-            self.object_track = objects
-            if len(self.object_track) > 0:
-                self.start_assign = True
+    elif col_amt > row_amt:  # unbalanced case 2
+
+        row_indexes = set(range(row_amt))
+
+        for coord in assignment:
+
+            if coord[0] in row_indexes:
+                new_assignment.append(coord)
+                
+    else:
+        new_assignment = assignment
+
+    return np.array(new_assignment)
+
+
+def search_optimum(cost_matrix):
+    assignment = []
+
+    bool_matrix = (cost_matrix == 0)
+
+    while np.count_nonzero(bool_matrix == True):
+
+        solution = [float('inf'), -1]
+
+        for row_num, row in enumerate(bool_matrix):
+
+            amount_zeros = np.count_nonzero(row == True)
+
+            if amount_zeros > 0 and solution[0] > amount_zeros:
+                solution[0] = amount_zeros
+                solution[1] = row_num
+
+        col_idx = np.where(bool_matrix[solution[1]] == True)[0][0]
+        row_idx = solution[1]
+
+        assignment.append([row_idx, col_idx])
+
+        bool_matrix[:, col_idx] = False
+        bool_matrix[row_idx, :] = False
+
+    return np.array(assignment)
+
+
+def get_strides(cost_matrix):
+
+    assignment = search_optimum(copy.deepcopy(cost_matrix))
+
+    all_rows = set(range(cost_matrix.shape[0]))
+    zero_rows = set(assignment[:,1])
+    unmarked_rows = list(all_rows - zero_rows) 
+
+    marked_cols, cond = [], True
+
+    while cond:
+
+        cond = False
+
+        for row_num in unmarked_rows:
+
+            zero_col = np.where(cost_matrix[row_num] == 0)[0]
+
+            for col_num in zero_col:
+                
+                if col_num not in marked_cols:
+
+                    marked_cols.append(col_num)
+
+                    cond = True
+
+        for coord in assignment:
+
+            row_num, col_num = coord
+
+            if row_num not in unmarked_rows and col_num in marked_cols:
+
+                unmarked_rows.append(row_num)
+
+                cond = True
+
+    marked_rows = list(all_rows - set(unmarked_rows))
+
+    return assignment, marked_rows, marked_cols
+
+
+def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
+    '''
+    curr_objs - [[center, height, width, cls, prob]]
+    prev_objs - [[ ids, center, height, width, cls, prob, last_frame_seen, active_track ], ...]
+    '''
+
+    if len(curr_objs) == 0:
+        return prev_objs
+
+    # STEP 1: CREATE COST MATRIX
+
+    prev_exist_objs = [obj for obj in prev_objs if obj['active_track']]
+
+    if len(prev_exist_objs) == 0:
+        hidden_return = copy.deepcopy(prev_objs)
+        last_id = prev_objs[-1]['id'] + 1
+
+        for obj in curr_objs:
+            new_obj = copy.deepcopy(obj)
+            new_obj['id'] = last_id
+            new_obj['last_frame_seen'] = frame_num
+            hidden_return.append(new_obj)
+            last_id += 1
+            return hidden_return
+
+    cost_matrix = np.zeros((len(curr_objs), len(prev_exist_objs)))
+
+
+    for i, c_obj in enumerate(curr_objs):
+
+        for j, p_obj in enumerate(prev_exist_objs):
+
+            iou = calculate_IOU(c_obj, p_obj)
+
+            if iou <= IOU_min:
+
+                iou = 0
+
+            cost_matrix[i][j] = 1 - iou
+    # STEP 2: PERFORM ASSIGNMENT
+    row_amt = cost_matrix.shape[0]
+    col_amt = cost_matrix.shape[1]
+
+    curr_unidentified_ids = np.where((cost_matrix == 1).all(axis=1))[0]
+    prev_unidentified_ids = np.where((cost_matrix == 1).all(axis=0))[0]
+
+    # reprocess cost matrix
+
+    if row_amt > col_amt:
+        extra_zeros = np.zeros((row_amt - col_amt, row_amt))
+        cost_matrix = np.concatenate((cost_matrix, extra_zeros.T), axis=1)
+
+    elif col_amt > row_amt:
+        extra_zeros = np.zeros((col_amt - row_amt, col_amt))
+        cost_matrix = np.concatenate((cost_matrix, extra_zeros), axis=0)
+
+
+    # row subtract
+    min_row_values = np.min(cost_matrix, axis=1)
+    cost_matrix = (cost_matrix.T - min_row_values).T
+
+    # column subtract
+    min_col_values = np.min(cost_matrix, axis=0)
+    cost_matrix = cost_matrix - min_col_values
+
+    dim = cost_matrix.shape[0]
+
+    row_strides = []
+    col_strides = []
+
+    while len(row_strides) + len(col_strides) < dim:
+
+        assignment, row_strides, col_strides = get_strides(cost_matrix)
+
+        min_value = float('inf')
+
+        if len(row_strides) + len(col_strides) < dim:
+
+            # get minimum value in unmarked values
+            for row_num, row in enumerate(cost_matrix):
+
+                if row_num not in row_strides:
+
+                    for col_num, val in enumerate(row):
+
+                        if col_num not in col_strides:
+
+                            if min_value > cost_matrix[row_num][col_num]:
+                                min_value = cost_matrix[row_num][col_num]
+
+            # subtract minimum value to every unmarked values
+            for row_num, row in enumerate(cost_matrix):
+
+                if row_num not in row_strides:
+
+                    for col_num, val in enumerate(row):
+
+                        if col_num not in col_strides:
+                            cost_matrix[row_num][col_num] -= min_value
+
+            # add minimum value to intersections
+            for row_num in row_strides:
+
+                for col_num in col_strides:
+                    cost_matrix[row_num][col_num] += min_value
+
+    assignment = filter_detections(assignment, row_amt, col_amt)
+    row_idx, col_idx = assignment[:, 0], assignment[:, 1]
+
+    # STEP 3: PARSE ASSIGNMENT
+
+    new_objs = copy.deepcopy(prev_exist_objs)
+    next_new_id, curr_ids = prev_objs[-1]['id'] + 1, len(curr_objs)
+
+    for row, col in zip(row_idx, col_idx):
+
+        if row in curr_unidentified_ids or col in prev_unidentified_ids:
+            obj = curr_objs[row]
+
+            unidentified_object = dict()
+            unidentified_object['id'] = next_new_id
+            unidentified_object['center'] = obj['center']
+            unidentified_object['height'] = obj['height']
+            unidentified_object['width'] = obj['width']
+            unidentified_object['class'] = obj['class']
+            unidentified_object['prob'] = obj['prob']
+            unidentified_object['last_frame_seen'] = frame_num
+            unidentified_object['velocity'] = (0, 0)
+            unidentified_object['active_track'] = True
+
+            next_new_id += 1
+            new_objs.append(unidentified_object)
 
         else:
-            # check previous frame for object assignment
-            self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
+            new_objs[col]['height'] = curr_objs[row]['height']
+            new_objs[col]['width'] = curr_objs[row]['width']
+            new_objs[col]['class'] = curr_objs[row]['class']
+            new_objs[col]['prob'] = curr_objs[row]['prob']
+            new_objs[col]['active_track'] = True
+            # velocity calculation
+            current_center = curr_objs[row]['center']
+            previous_center = new_objs[col]['center']
+            change_x = current_center[0] - previous_center[0]
+            change_y = current_center[1] - previous_center[1]
+            time = frame_num - new_objs[col]['last_frame_seen']
+            vx = change_x / time
+            vy = change_y / time
 
-        # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
-        for obj_idx, obj in enumerate(self.object_track):
-            center = obj['center']
-            width = obj['width']
-            height = obj['height']
-            left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
-            right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
-            if self.frame_count - obj['last_frame_seen'] > self.T_lost:
-                if (left_up[0] < 0 or left_up[0] > self.frame_dim[0]) and (right_bottom[0] < 0 or right_bottom[0] > self.frame_dim[0]):
-                    if (left_up[1] < 0 or left_up[1] > self.frame_dim[1]) and (right_bottom[1] < 0 or right_bottom[1] > self.frame_dim[1]):
-                        self.object_track[obj_idx]['active_track'] = False
+            new_objs[col]['velocity'] = (vx, vy)
+            new_objs[col]['last_frame_seen'] = frame_num
+            new_objs[col]['center'] = curr_objs[row]['center']
 
-        # TASK: DISPLAY TRACKS
-        for obj in self.object_track:
+    if len(curr_objs) > len(prev_exist_objs):
 
-            center = obj['center']
-            width = obj['width']
-            height = obj['height']
-            class_name = obj['class']
-            id_val = obj['id']
+        unidentified_ids = [x for x in range(curr_ids) if x not in row_idx]
 
-            if obj['active_track'] and obj['last_frame_seen'] == self.frame_count:
+        for id_val in unidentified_ids:
+            obj = curr_objs[id_val]
 
-                left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
-                right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
-                color = COLORS[VOC_CLASSES.index(class_name)]
-                cv2.rectangle(frame, left_up, right_bottom, color, 2)
-                label = str(id_val)
-                text_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-                p1 = (left_up[0], left_up[1] - text_size[1])
-                cv2.rectangle(frame, (p1[0] - 2 // 2, p1[1] - 2 - baseline), (p1[0] + text_size[0], p1[1] + text_size[1]), color, -1)
-                cv2.putText(frame, label, (p1[0], p1[1] + baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, 8)
+            unidentified_object = dict()
+            unidentified_object['id'] = next_new_id
+            unidentified_object['center'] = obj['center']
+            unidentified_object['height'] = obj['height']
+            unidentified_object['width'] = obj['width']
+            unidentified_object['class'] = obj['class']
+            unidentified_object['prob'] = obj['prob']
+            unidentified_object['last_frame_seen'] = frame_num
+            unidentified_object['velocity'] = (0, 0)
+            unidentified_object['active_track'] = True
 
-        cv2.imwrite(frame_filename, frame)
+            new_objs.append(unidentified_object)
 
-        self.frame_count += 1
-        self.frame_list.append(frame)
+            next_new_id += 1
 
-        return frame
+    final_objs, new_objs_cnt = [], 0
+    
+    for obj in prev_objs: 
 
-    def create_objects(self, result):
+        if obj['active_track']:
+            final_objs.append(new_objs[new_objs_cnt])
+            new_objs_cnt += 1
 
-        object_transform = []
-
-        if len(result) == 0:
-            return []
-
-        if not self.start_assign:
-            obj_idx = 0
         else:
-            obj_idx = self.object_track[-1]['id'] + 1
+            final_objs.append(obj)
 
-        for obj in result:
+    while new_objs_cnt < len(new_objs):
+        final_objs.append(new_objs[new_objs_cnt])
+        new_objs_cnt += 1
 
-            center = ((obj[0] + obj[2]) / 2, (obj[1] + obj[3]) / 2)
-            height = abs(obj[1] - obj[3])
-            width = abs(obj[0] - obj[2])
-
-            new_object = dict()
-            new_object['id'] = obj_idx
-            new_object['center'] = center
-            new_object['height'] = height
-            new_object['width'] = width
-            new_object['velocity'] = (0, 0)
-            new_object['prob'] = obj[4]
-            new_object['class'] = self.net.names[int(obj[5])]
-            new_object['last_frame_seen'] = self.frame_count
-            new_object['active_track'] = True
-            obj_idx += 1
-
-            object_transform.append(new_object)
-
-        return object_transform
-
-    def get_frames(self):
-        return self.frame_list
+    return final_objs

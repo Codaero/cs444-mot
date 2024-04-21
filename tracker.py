@@ -27,7 +27,6 @@ result - [[(x1, y1) <top left>, (x2, y2) <bottom right>, VOC_CLASSES[cls_index] 
 '''
 
 class Tracker:
-    
     def __init__(self, net, output_folder, frame_dim):
         self.frame_dim = frame_dim
         self.frame_count = 0
@@ -35,24 +34,25 @@ class Tracker:
         self.net = net
         self.object_track = []
         self.output_folder = output_folder
-        self.T_lost = 1  # The original paper stated if an object reappears, it will take a new identity
+        self.T_lost = 5  # The original paper stated if an object reappears, it will take a new identity
         self.IOU_min = 0.1  # The paper states to reject any object assignments less than IOUmin
-
+        self.start_assign = False
 
     def process_frame(self, frame):
         frame_filename = os.path.join(self.output_folder, f"frame_{self.frame_count:04d}.jpg")
         cv2.imwrite(frame_filename, frame)
 
         # TASK: GENERATE RESULTS FROM YOLO MODEL
-        result = predict_image(self.net, frame_filename, root_img_directory="")
+        result = self.net(frame)
+        result = result.xyxy[0]
 
         # TASK: REMOVE BOUNDING BOXES RESULTING FROM ZERO AREA
         rm_idx = []
         for obj_idx, obj in enumerate(result):
-            width = abs(obj[0][0] - obj[1][0])
-            height = abs(obj[0][1] - obj[1][1])
+            width = abs(obj[0] - obj[2])
+            height = abs(obj[1] - obj[3])
             area = width * height
-            if area == 0:
+            if area == 0 or self.net.names[int(obj[5])] != 'person':
                 rm_idx.append(obj_idx)
 
         # TASK: TRANSFORM OBJECT DATA WITH CENTER COORDINATE
@@ -60,39 +60,38 @@ class Tracker:
         objects = self.create_objects(upd_result)
 
         # TASK: GET THE SET OF OBJECT TRACKS WE WANT TO DISPLAY VIA HUNGARIAN ALGORITHM
-        if self.frame_count == 0:
+        if not self.start_assign:
             # assign unique ids to every object
             self.object_track = objects
+            if len(self.object_track) > 0:
+                self.start_assign = True
 
         else:
             # check previous frame for object assignment
             self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
-
 
         # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
         for obj_idx, obj in enumerate(self.object_track):
             center = obj['center']
             width = obj['width']
             height = obj['height']
-            left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
-            right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
+            velocity = obj['velocity']
             if self.frame_count - obj['last_frame_seen'] > self.T_lost:
-                if (left_up[0] < 0 or left_up[0] > self.frame_dim[0]) and (right_bottom[0] < 0 or right_bottom[0] > self.frame_dim[0]):
-                    if (left_up[1] < 0 or left_up[1] > self.frame_dim[1]) and (right_bottom[1] < 0 or right_bottom[1] > self.frame_dim[1]):
-                        self.object_track[obj_idx]['active_track'] = False
-
-
+                # Get corners of bounding box
+                tp_lt = (int(center[0] - width / 2), int(center[1] - height / 2))
+                bt_rt = (int(center[0] + width / 2), int(center[1] + height / 2))
+                if (tp_lt[0] <= 5 and velocity[0] < 0) or (tp_lt[1] <= 5 and velocity[1] < 0) or (bt_rt[0] >= 635 and velocity[0] > 0) or (bt_rt[1] >= 355 and velocity[1] > 0):
+                    self.object_track[obj_idx]['active_track'] = False
 
         # TASK: DISPLAY TRACKS
         for obj in self.object_track:
-
             center = obj['center']
             width = obj['width']
             height = obj['height']
             class_name = obj['class']
             id_val = obj['id']
 
-            if obj['active_track']:
+            if obj['active_track'] and obj['last_frame_seen'] == self.frame_count:
 
                 left_up = (int(center[0] - width / 2), int(center[1] - height / 2))
                 right_bottom = (int(center[0] + width / 2), int(center[1] + height / 2))
@@ -107,21 +106,27 @@ class Tracker:
         cv2.imwrite(frame_filename, frame)
 
         self.frame_count += 1
-        self.frame_list.append([frame])
+        self.frame_list.append(frame)
 
         return frame
 
     def create_objects(self, result):
 
         object_transform = []
-        
-        for obj_idx, obj in enumerate(result):
-            
-            tp_lt, btm_rt, cls_prob, filename, prob = obj
 
-            center = ((tp_lt[0] + btm_rt[0]) / 2, (tp_lt[1] + btm_rt[1]) / 2)
-            height = abs(tp_lt[1] - btm_rt[1])
-            width = abs(tp_lt[0] - btm_rt[0])
+        if len(result) == 0:
+            return []
+
+        if not self.start_assign:
+            obj_idx = 0
+        else:
+            obj_idx = self.object_track[-1]['id'] + 1
+
+        for obj in result:
+
+            center = ((obj[0] + obj[2]) / 2, (obj[1] + obj[3]) / 2)
+            height = abs(obj[1] - obj[3])
+            width = abs(obj[0] - obj[2])
 
             new_object = dict()
             new_object['id'] = obj_idx
@@ -129,19 +134,15 @@ class Tracker:
             new_object['height'] = height
             new_object['width'] = width
             new_object['velocity'] = (0, 0)
-            new_object['class'] = obj[2]
             new_object['prob'] = obj[4]
+            new_object['class'] = self.net.names[int(obj[5])]
             new_object['last_frame_seen'] = self.frame_count
             new_object['active_track'] = True
+            obj_idx += 1
 
             object_transform.append(new_object)
 
         return object_transform
 
-
     def get_frames(self):
         return self.frame_list
-         
-
-        
-    

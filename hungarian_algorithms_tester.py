@@ -19,18 +19,18 @@ from hungarian_algorithm import filter_detections
 
 
 # # Cost matrix
-# cost_matrix = np.array([[0.2, 0.5, 0.7, 0.3],
-#                         [0.6, 0.3, 0.4, 0.2],
-#                         [0.8, 0.1, 0.9, 0.6]])
+cost_matrix = np.array([[0.087387, 1, 1],
+ [          1   ,  0.84789     ,0.22616],
+ [          0   ,        0      ,     0]])
 
 
-# # Find the optimal assignment using linear_sum_assignment
-# row_ind, col_ind = linear_sum_assignment(cost_matrix)
+# Find the optimal assignment using linear_sum_assignment
+row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-# # Print the row and column indices of the optimal assignments
-# print("Optimal Assignments:")
-# for col, row in zip(col_ind, row_ind):
-#     print(f"Current Object {row+1} -> Previous Object {col+1}")
+# Print the row and column indices of the optimal assignments
+print("Optimal Assignments:")
+for col, row in zip(col_ind, row_ind):
+    print(f"Current Object {row+1} -> Previous Object {col+1}")
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -45,7 +45,9 @@ from hungarian_algorithm import filter_detections
 #                         [0.6, 0.3, 0.4, 0.2],
 #                         [0.8, 0.1, 0.9, 0.6]])
 
-cost_matrix = np.array([[0.0, 0.0], [0.0, 0.0]])
+cost_matrix = np.array([[   0.087387,           1  ,         1],
+ [          1   ,  0.84789     ,0.22616],
+ [          0   ,        0      ,     0]])
 
 # Add extra rows/columns
 row_amt = cost_matrix.shape[0]
