@@ -68,6 +68,8 @@ class Tracker:
 
         else:
             # check previous frame for object assignment
+            # self.object_track has all old objects (no new objects)
+
             self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
 
         # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
