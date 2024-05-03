@@ -244,6 +244,7 @@ def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
             unidentified_object['last_frame_seen'] = frame_num
             unidentified_object['velocity'] = (0, 0)
             unidentified_object['active_track'] = True
+            unidentified_object['cov'] = np.identity(6)
 
             next_new_id += 1
             new_objs.append(unidentified_object)
@@ -253,17 +254,9 @@ def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
             new_objs[col]['width'] = curr_objs[row]['width']
             new_objs[col]['class'] = curr_objs[row]['class']
             new_objs[col]['prob'] = curr_objs[row]['prob']
+            new_objs[col]['cov'] = curr_objs[row]['cov']
             new_objs[col]['active_track'] = True
-            # velocity calculation
-            current_center = curr_objs[row]['center']
-            previous_center = new_objs[col]['center']
-            change_x = current_center[0] - previous_center[0]
-            change_y = current_center[1] - previous_center[1]
-            time = frame_num - new_objs[col]['last_frame_seen']
-            vx = change_x / time
-            vy = change_y / time
-
-            new_objs[col]['velocity'] = (vx, vy)
+            new_objs[col]['velocity'] = curr_objs[row]['velocity']
             new_objs[col]['last_frame_seen'] = frame_num
             new_objs[col]['center'] = curr_objs[row]['center']
 
@@ -284,6 +277,7 @@ def object_assign(curr_objs, prev_objs, frame_num, IOU_min):
             unidentified_object['last_frame_seen'] = frame_num
             unidentified_object['velocity'] = (0, 0)
             unidentified_object['active_track'] = True
+            unidentified_object['cov'] = np.identity(6)
 
             new_objs.append(unidentified_object)
 
