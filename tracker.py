@@ -1,9 +1,13 @@
 import os
 import cv2
+import numpy as np
+import torch
+
 from src.predict import predict_image
 from src.config import VOC_CLASSES, COLORS
 
 from hungarian_algorithm import object_assign
+from kalman_filter import KalmanFilter
 
 '''
 Object Attributes:
@@ -16,6 +20,7 @@ Object Attributes:
 - prob : float
 - last_frame_seen: int
 - active_track: bool
+- cov: array <= <dim : (6,6)>
 '''
 
 '''
@@ -37,6 +42,7 @@ class Tracker:
         self.T_lost = 5  # The original paper stated if an object reappears, it will take a new identity
         self.IOU_min = 0.1  # The paper states to reject any object assignments less than IOUmin
         self.start_assign = False
+        self.kalman_filter = KalmanFilter()
 
     def process_frame(self, frame):
         frame_filename = os.path.join(self.output_folder, f"frame_{self.frame_count:04d}.jpg")
@@ -68,9 +74,55 @@ class Tracker:
 
         else:
             # check previous frame for object assignment
-            # self.object_track has all old objects (no new objects)
+            print(self.object_track)
+            print('\n\n\n')
+            # get all predictions
+            kalman_x, kalman_p, kalman_ids = [], [], []
+            for obj in self.object_track:
+                if obj['active_track']:
+                    x = obj['center'][0]
+                    y = obj['center'][1]
+                    vx = obj['velocity'][0]
+                    vy = obj['velocity'][1]
+                    width = obj['width']
+                    height = obj['height']
+                    kalman_x.append([x, y, vx, vy, width, height])
+                    kalman_ids.append(obj['id'])
+                    kalman_p.append(obj['cov'])
 
-            self.object_track = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
+            kalman_x = torch.tensor(kalman_x).cpu().numpy()
+            kalman_p = torch.tensor(kalman_p).cpu().numpy()
+
+            pred_x, pred_p = [], []
+            for idx in range(len(kalman_x)):
+                x, p = self.kalman_filter.predict(kalman_x[idx], kalman_p[idx])
+                pred_x.append(x)
+                pred_p.append(p)
+            pred_x, pred_p = np.array(pred_x), np.array(pred_p)
+
+            # get all measurements
+            measured = object_assign(objects, self.object_track, self.frame_count, self.IOU_min)
+            kalman_m = []
+            for obj in measured:
+                if obj['active_track'] and obj['id'] in kalman_ids:
+                    m_x = obj['center'][0]
+                    m_y = obj['center'][1]
+                    m_width = obj['width']
+                    m_height = obj['height']
+                    kalman_m.append([m_x, m_y, m_width, m_height])
+            kalman_m = torch.tensor(kalman_m).cpu().numpy()
+
+            self.object_track = measured
+
+            # get all targets and save them
+            for idx in range(len(kalman_m)):
+                targ_x, targ_p = self.kalman_filter.update(kalman_m[idx], pred_x[idx], pred_p[idx])
+                self.object_track[kalman_ids[idx]]['cov'] = targ_p
+                self.object_track[kalman_ids[idx]]['center'] = (targ_x[0], targ_x[1])
+                self.object_track[kalman_ids[idx]]['velocity'] = (targ_x[2], targ_x[3])
+                self.object_track[kalman_ids[idx]]['width'] = targ_x[4]
+                self.object_track[kalman_ids[idx]]['height'] = targ_x[5]
+
 
         # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
         for obj_idx, obj in enumerate(self.object_track):
@@ -140,6 +192,7 @@ class Tracker:
             new_object['class'] = self.net.names[int(obj[5])]
             new_object['last_frame_seen'] = self.frame_count
             new_object['active_track'] = True
+            new_object['cov'] = np.identity(6)
             obj_idx += 1
 
             object_transform.append(new_object)
