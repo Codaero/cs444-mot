@@ -19,10 +19,10 @@ class KalmanFilter:
 
         # Tune these
         self.process_cv = {
-            "wx": 1,
-            "wy": 1,
-            "ww": 1,
-            "wh": 1,
+            "wx": 1000,
+            "wy": 1000,
+            "ww": 1000,
+            "wh": 1000,
         }
         # Process Noise Covariance
         self.Q = np.array([[(self.deltaT ** 4) / 4 * self.process_cv["wx"], 0,
