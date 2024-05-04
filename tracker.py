@@ -119,8 +119,20 @@ class Tracker:
                 self.object_track[kalman_ids[idx]]['center'] = (targ_x[0], targ_x[1])
                 self.object_track[kalman_ids[idx]]['velocity'] = (targ_x[2], targ_x[3])
 
-
         # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
+        self.bound_check()
+
+        # TASK: DISPLAY TRACKS
+        frame = self.edit_frame(frame)
+
+        cv2.imwrite(frame_filename, frame)
+
+        self.frame_count += 1
+        self.frame_list.append(frame)
+
+        return frame
+
+    def bound_check(self):
         for obj_idx, obj in enumerate(self.object_track):
             center = obj['center']
             width = obj['width']
@@ -133,7 +145,7 @@ class Tracker:
                 if (tp_lt[0] <= 5 and velocity[0] < 0) or (tp_lt[1] <= 5 and velocity[1] < 0) or (bt_rt[0] >= 635 and velocity[0] > 0) or (bt_rt[1] >= 355 and velocity[1] > 0):
                     self.object_track[obj_idx]['active_track'] = False
 
-        # TASK: DISPLAY TRACKS
+    def edit_frame(self, frame):
         for obj in self.object_track:
             center = obj['center']
             width = obj['width']
@@ -153,13 +165,8 @@ class Tracker:
                 cv2.rectangle(frame, (p1[0] - 2 // 2, p1[1] - 2 - baseline), (p1[0] + text_size[0], p1[1] + text_size[1]), color, -1)
                 cv2.putText(frame, label, (p1[0], p1[1] + baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, 8)
 
-        cv2.imwrite(frame_filename, frame)
-
-        self.frame_count += 1
-        self.frame_list.append(frame)
-
         return frame
-
+        
     def create_objects(self, result):
 
         object_transform = []
