@@ -6,16 +6,16 @@ def main():
     WIDTH = 10
     HEIGHT = 10
 
-    # x, y, x_dot, y_dot, width, height
-    curr_state = np.array([1, 1, 1, 1, WIDTH, HEIGHT])
-    curr_est_cov = np.identity(6)
+    # x, y, vx, vy
+    curr_state = np.array([1, 1, 1, 1])
+    curr_est_cov = np.identity(4)
 
 
     x_next, p_next = kf.predict(curr_state, curr_est_cov)
     print(f"Predicted State:\n{x_next}\n")
     print(f"Extrapolated Estimate Covariance:\n{p_next}")
 
-    measurement = [1.2, 1.2, WIDTH, HEIGHT]
+    measurement = [1.2, 1.2, 1, 1]
 
     new_state, p_new = kf.update(measurement, x_next, p_next)
 
