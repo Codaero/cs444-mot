@@ -84,9 +84,7 @@ class Tracker:
                     y = obj['center'][1]
                     vx = obj['velocity'][0]
                     vy = obj['velocity'][1]
-                    width = obj['width']
-                    height = obj['height']
-                    kalman_x.append([x, y, vx, vy, width, height])
+                    kalman_x.append([x, y, vx, vy])
                     kalman_ids.append(obj['id'])
                     kalman_p.append(obj['cov'])
 
@@ -107,9 +105,9 @@ class Tracker:
                 if obj['active_track'] and obj['id'] in kalman_ids:
                     m_x = obj['center'][0]
                     m_y = obj['center'][1]
-                    m_width = obj['width']
-                    m_height = obj['height']
-                    kalman_m.append([m_x, m_y, m_width, m_height])
+                    m_vx = obj['velocity'][0]
+                    m_vy = obj['velocity'][0]
+                    kalman_m.append([m_x, m_y, m_vx, m_vy])
             kalman_m = torch.tensor(kalman_m).cpu().numpy()
 
             self.object_track = measured
@@ -120,8 +118,6 @@ class Tracker:
                 self.object_track[kalman_ids[idx]]['cov'] = targ_p
                 self.object_track[kalman_ids[idx]]['center'] = (targ_x[0], targ_x[1])
                 self.object_track[kalman_ids[idx]]['velocity'] = (targ_x[2], targ_x[3])
-                self.object_track[kalman_ids[idx]]['width'] = targ_x[4]
-                self.object_track[kalman_ids[idx]]['height'] = targ_x[5]
 
 
         # TASK: BOUND CHECK FOR OBJECTS ENTERING AND LEAVING THE FRAME
@@ -192,7 +188,7 @@ class Tracker:
             new_object['class'] = self.net.names[int(obj[5])]
             new_object['last_frame_seen'] = self.frame_count
             new_object['active_track'] = True
-            new_object['cov'] = np.identity(6)
+            new_object['cov'] = np.identity(4)
             obj_idx += 1
 
             object_transform.append(new_object)
