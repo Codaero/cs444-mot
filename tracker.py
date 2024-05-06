@@ -20,7 +20,7 @@ Object Attributes:
 - prob : float
 - last_frame_seen: int
 - active_track: bool
-- cov: array <= <dim : (6,6)>
+- cov: array <= <dim : (4,4)>
 '''
 
 '''
