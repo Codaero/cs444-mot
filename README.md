@@ -11,10 +11,11 @@ First install all necessary packages
 ```
 pip install -r requirements.txt
 ```
-The first step is to clone the repository and modify test.py file_path variable with a new filepath to a video file (.mp4, .mov, etc.). After modifying the file, run:
+The first step is to clone the repository and run: 
 ```
 python3 test.py
 ```
+if you want to change the video, modify the file_path variable in test.py with a new filepath to a video file (.mp4, .mov, etc.). After modifying the file, re-run the same command.
 
 ## Pipeline
 
