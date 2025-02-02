@@ -14,6 +14,10 @@ python3 test.py
 
 ## Pipeline
 
+![image](https://github.com/user-attachments/assets/237d039d-c52a-407e-b3ea-e503ed93c9b0)
+
+Above shows an image of the SORT pipeline. First, we capture a frame and is sent into a Yolo model. The Yolo model produces bounding box estimates, which is sent into a hungarian algorithm. At the same time, the hungarian algorithm stores a previous stashed Object tracking output which includes bounding boxes with IDs associated with them. The algorithm will use IOU of the previous frame and current frame to place new IDs on the new frame. Note bounding boxes with higher IOUs from the previous and current frames will most likely be assigned the same IDs. The hungarian model will output the same bounding boxes, but with IDs which is sent into a kalman filter. The kalman filter will first predict where the bounding boxes were supposed to be based on the previous frame and a linear velocity model, and then compare it with the measured result from our hungarian algorithm in an update step. The resulting output is a frame with bounding boxes and IDs associated with the boxes.
+
 ## Test Files
 
 The following files are how exactly we unit tested each component within the pipeline. Since we utilitzed a pre-trained Yolo model, we did not have to test the object detection model.
