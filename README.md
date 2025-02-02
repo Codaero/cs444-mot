@@ -1,5 +1,3 @@
-![image](https://github.com/user-attachments/assets/9f692b29-284c-47b3-bff3-95a4d6308f75)
-
 # SORT Implementation
 
 ## Abstract
