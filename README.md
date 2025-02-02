@@ -7,6 +7,10 @@ This repository is an implementation of the SORT object tracking model which uti
 
 ⚠️ DISCLAIMER: CUDA IS NECESSARY TO RUN THIS REPOSITORY ⚠️
 
+First install all necessary packages
+```
+pip install -r requirements.txt
+```
 The first step is to clone the repository and modify test.py file_path variable with a new filepath to a video file (.mp4, .mov, etc.). After modifying the file, run:
 ```
 python3 test.py
