@@ -5,8 +5,6 @@ This repository is an implementation of the SORT object tracking model which uti
 
 ## Instructions 
 
-⚠️ DISCLAIMER: CUDA IS NECESSARY TO RUN THIS REPOSITORY ⚠️
-
 First install all necessary packages
 ```
 pip3 install -r requirements.txt
