@@ -9,7 +9,7 @@ This repository is an implementation of the SORT object tracking model which uti
 
 First install all necessary packages
 ```
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 The first step is to clone the repository and run: 
 ```
